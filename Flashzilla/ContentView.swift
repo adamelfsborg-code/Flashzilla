@@ -7,23 +7,15 @@
 
 import SwiftUI
 
-func withOptionalAnimation<Result>(_ animation: Animation? = .default, _ body: () throws -> Result) rethrows -> Result {
-    if UIAccessibility.isReduceMotionEnabled {
-        return try body()
-    }
-    return try withAnimation(animation, body)
-}
-
 struct ContentView: View {
-    @State private var scale = 1.0
+    @Environment(\.accessibilityReduceTransparency) var accessibilityReduceTransparency
     
     var body: some View {
-        Button("Hello world") {
-            withOptionalAnimation {
-                scale *= 1.5
-            }
-        }
-        .scaleEffect(scale)
+        Text("Hello wolrd")
+            .padding()
+            .background(accessibilityReduceTransparency ? .black : .black.opacity(0.5))
+            .foregroundColor(.white)
+            .clipShape(.capsule)
     }
 }
 
