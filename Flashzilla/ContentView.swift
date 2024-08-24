@@ -8,26 +8,18 @@
 import SwiftUI
 
 struct ContentView: View {
-    let timer = Timer.publish(every: 1, tolerance: 0.5, on: .main, in: .common).autoconnect()
-    @State private var counter = 0
-    
+    @Environment(\.scenePhase) var scenePhase
     var body: some View {
-        VStack {
-            Text("Hello world")
-                .onReceive(timer, perform: { time in
-                    if counter == 5 {
-                        cancelTimer()
-                    } else {
-                        print("The time is not \(time)")
-                    }
-                    
-                    counter += 1
-                })
-        }
-    }
-    
-    func cancelTimer() {
-        timer.upstream.connect().cancel()
+        Text("Hello world")
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                if newPhase == .active {
+                    print("Active")
+                } else if newPhase == .inactive {
+                    print("Inactive")
+                } else if newPhase == .background {
+                    print("background")
+                }
+            }
     }
 }
 
