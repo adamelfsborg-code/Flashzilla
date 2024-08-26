@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 extension View {
     func stacked(at position: Int, in total: Int) -> some View {
@@ -16,18 +17,23 @@ extension View {
 
 struct ContentView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) var accessibilityDifferentiateWithoutColor
+    @Environment(\.accessibilityVoiceOverEnabled) var accessibilityVoiceOverEnabled
     @Environment(\.scenePhase) var scenePhase
+    @Environment(\.modelContext) var modelContext
     
-    @State private var deck = Array<Card>(repeating: .example, count: 10)
+    @Query(sort: \Card.timestamp, order: .reverse) var deck: [Card]
     @State private var timeRemaning = 100
     @State private var isActive = true
+    @State private var isShowingEditScreen = false
+    
+    @State private var isAnswerWrong = false
     
     
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
         ZStack {
-            Image(.background)
+            Image(decorative: "background")
                 .resizable()
                 .ignoresSafeArea()
             VStack {
@@ -40,13 +46,18 @@ struct ContentView: View {
                     .clipShape(.capsule)
                 
                 ZStack {
-                    ForEach(0..<deck.count, id: \.self) { index in
-                        CardView(card: deck[index]) {
+                    ForEach(deck) { card in
+                        let index = deck.firstIndex(where: {$0.id == card.id }) ?? -1
+                        
+                        CardView(card: card) { isAnswerWrong in
                             withAnimation {
-                                removeCard(at: index)
+                                self.isAnswerWrong = isAnswerWrong
+                                self.removeCard(card: card)
                             }
                         }
-                        .stacked(at: index, in: deck.count)
+                        .stacked(at: index, in: self.deck.count)
+                        .allowsHitTesting(index == self.deck.count - 1)
+                        .accessibility(hidden: index < self.deck.count - 1)
                     }
                 }
                 .allowsHitTesting(timeRemaning > 0)
@@ -59,23 +70,59 @@ struct ContentView: View {
                         .clipShape(.capsule)
                 }
             }
-            if accessibilityDifferentiateWithoutColor {
+            
+            VStack {
+                HStack {
+                    Spacer()
+                    
+                    Button {
+                       isShowingEditScreen = true
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .padding()
+                            .background(.black.opacity(0.7))
+                            .clipShape(.circle)
+                    }
+                }
+                
+                Spacer()
+            }
+            .foregroundStyle(.white)
+            .font(.largeTitle)
+            .padding()
+            
+            if accessibilityDifferentiateWithoutColor  || accessibilityVoiceOverEnabled {
                 VStack {
                     Spacer()
                     
                     HStack {
-                        Image(systemName: "xmark.circle")
-                            .padding()
-                            .background(.black.opacity(0.7))
-                            .clipShape(.circle)
+                        Button {
+                            withAnimation {
+                                removeCard(card: deck.last!)
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .padding()
+                                .background(.black.opacity(0.7))
+                                .clipShape(.circle)
+                        }
+                        .accessibilityLabel("Wrong")
+                        .accessibilityHint("Mark your answer as being incorrect.")
                         
                         Spacer()
                         
-                        Image(systemName: "checkmark.circle")
-                            .padding()
-                            .background(.black.opacity(0.7))
-                            .clipShape(.circle)
-                        
+                        Button {
+                            withAnimation {
+                                removeCard(card: deck.last!)
+                            }
+                        } label: {
+                            Image(systemName: "checkmark.circle")
+                                .padding()
+                                .background(.black.opacity(0.7))
+                                .clipShape(.circle)
+                        }
+                        .accessibilityLabel("Correct")
+                        .accessibilityHint("Mark yuour answer as being correct.")
                     }
                     .foregroundColor(.white)
                     .font(.largeTitle)
@@ -90,24 +137,47 @@ struct ContentView: View {
             timeRemaning -= 1
         }
         .onChange(of: scenePhase) {
-            guard deck.isEmpty == false else { return }
+            guard !deck.isEmpty else { return }
             isActive = scenePhase == .active
         }
+        .sheet(isPresented: $isShowingEditScreen, onDismiss: resetDeck, content: EditDeck.init)
+        .onAppear(perform: resetDeck)
+        
     }
     
-    func removeCard(at index: Int) {
-        deck.remove(at: index)
+    func removeCard(card: Card) {
+        modelContext.delete(card)
         
-        isActive = deck.isEmpty == false
+        if isAnswerWrong {
+            let tempCard = Card(prompt: card.prompt, answer: card.answer)
+            modelContext.insert(tempCard)
+            
+            isAnswerWrong = false
+        }
+        
+        try? modelContext.save()
+        isActive = !deck.isEmpty
     }
     
     func resetDeck() {
-        deck = Array<Card>(repeating: .example, count: 10)
+        guard !deck.isEmpty else { return }
         timeRemaning = 100
         isActive = true
     }
 }
 
 #Preview {
-    ContentView()
+    do {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Card.self, configurations: config)
+        
+        for _ in 0...10 {
+            let card = Card.example
+            container.mainContext.insert(card)
+        }
+        return ContentView()
+            .modelContainer(container)
+    } catch {
+        return Text("Failed to preview \(error.localizedDescription)")
+    }
 }
